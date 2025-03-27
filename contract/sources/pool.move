@@ -5,14 +5,15 @@ use sui::{
     coin::{Self, Coin},
     table::{Self, Table},
     event::emit,
+    clock::Clock,
 };
 
 use std::{
     type_name::{Self, TypeName},
 };
 
-use cyberfrog::version::{SuperAdminCap, Validators, check_validator};
-use cyberfrog::profile::{Profile,get_profile_token,edit_token,get_profile_bouding_addr};
+use cyberfrog::version::{SuperAdminCap, off_chain_validation};
+use cyberfrog::profile::{Profile,get_profile_token,edit_token,get_profile_bouding_addr,State as ProfileState};
 
 // Events
 public struct PoolCreated has copy, drop {
@@ -112,15 +113,18 @@ public fun withdraw_by_admin<T>(
     coin
 }
 
-public fun withdraw<T, U: drop>(
+public fun withdraw<T>(
     pool: &mut Pool<T>,
     amount: u64,
     profile: &mut Profile,
     state: &mut State,
-    validators: &Validators,
+    profileState: &mut ProfileState,
+    sig: vector<u8>,
+    clock:&Clock,
     ctx: &mut TxContext
 ) {
-    assert!(check_validator<U>(validators), ERROR_INVALID_VALIDATOR);
+    let sender = ctx.sender();
+    assert!(off_chain_validation<address>(sig, sender), ERROR_INVALID_VALIDATOR);
     let balance_value = balance::value(&pool.balance);
     let profile_token = get_profile_token(profile, type_name::get<T>());
     assert!(profile_token >= amount, ERROR_INSUFFICIENT_BALANCE);
@@ -134,7 +138,7 @@ public fun withdraw<T, U: drop>(
     let pool_amount = table::borrow_mut(&mut state.pools, type_name);
     *pool_amount = *pool_amount - amount;
 
-    edit_token<U>(profile, type_name, profile_token - amount, validators);
+    edit_token(profile, type_name, profile_token - amount, sig, profileState, clock, ctx);    
     
     let bouding_addr = get_profile_bouding_addr(profile);
 
