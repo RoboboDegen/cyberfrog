@@ -6,11 +6,12 @@ use std::{
 };
 
 use sui::{
+    clock::Clock,
     event::emit,
     table::{Self, Table},
 };
 
-use cyberfrog::version::{SuperAdminCap, check_validator, Validators};
+use cyberfrog::version::{off_chain_validation,create_off_chain_validator, OffChainValidator};
 
 // Events
 public struct ProfileCreated has copy, drop {
@@ -30,6 +31,7 @@ const ERROR_TOKEN_NOT_FOUND: u64 = 3;
 const ERROR_CARD_NOT_FOUND: u64 = 4;
 const ERROR_INVALID_VALIDATOR: u64 = 5;
 const ERROR_BOUDING_ADDR_NOT_FOUND: u64 = 6;
+const ERROR_PROFILE_NOT_FOUND: u64 = 7;
 
 public struct State has key {
     id: UID,
@@ -42,7 +44,8 @@ public struct Profile has key {
     bouding_addr: Option<address>,
     journey_records: Table<String, bool>,
     tokens: Table<TypeName, u64>,
-    cards: Table<TypeName, u8>,
+    cards: Table<String, u64>,
+    last_time: u64,
 }
 
 fun init(ctx: &mut TxContext) {
@@ -53,15 +56,18 @@ fun init(ctx: &mut TxContext) {
     transfer::share_object(state);
 }
 
-public fun create_profile<T: drop>(
+public fun create_profile(
     ctx: &mut TxContext,
     name: String,
     bouding_addr: Option<address>,
-    validators: &Validators,
-    state: &mut State
-): Profile {
+    sig: vector<u8>,
+    time:u64,
+    state: &mut State,
+): Profile {    
 
-    assert!(check_validator<T>(validators), ERROR_INVALID_VALIDATOR);
+    let off_chain_validator = create_off_chain_validator(time,ctx);
+   
+    assert!(off_chain_validation<OffChainValidator>(sig, off_chain_validator), ERROR_INVALID_VALIDATOR);
 
     let profile = Profile {
         id: object::new(ctx),
@@ -70,6 +76,7 @@ public fun create_profile<T: drop>(
         journey_records: table::new(ctx),
         tokens: table::new(ctx),
         cards: table::new(ctx),
+        last_time: time
     };
     
     let profile_id = profile.id.to_inner();
@@ -86,29 +93,40 @@ public fun create_profile<T: drop>(
     profile
 }
 
-public fun add_journey<T: drop>(
+public fun add_journey(
     profile: &mut Profile,
     journey: String,
     is_finish: bool,
-    validators: &Validators
+    sig: vector<u8>,    
+    state: &mut State,
+    clock:&Clock,
+    ctx: &mut TxContext 
 ) {
-    assert!(check_validator<T>(validators), ERROR_INVALID_VALIDATOR);
-
+    let last_time = clock.timestamp_ms();
+    let off_chain_validator = create_off_chain_validator(last_time,ctx); 
+    assert!(off_chain_validation<OffChainValidator>(sig, off_chain_validator), ERROR_INVALID_VALIDATOR);
+    assert!(check_profile_exists(profile, state), ERROR_PROFILE_NOT_FOUND);
     assert!(!table::contains(&profile.journey_records, journey), ERROR_JOURNEY_EXISTS);
     
     table::add(&mut profile.journey_records, journey, is_finish);
+    profile.last_time = last_time;
     let profile_id = profile.id.to_inner();
     emit(ProfileUpdated { profile_id, field: string::utf8(b"journey") });
 }
 
-public fun add_token<T: drop>(
+public fun add_token(
     profile: &mut Profile,
     token: TypeName,
     amount: u64,
-    validators: &Validators
+    sig: vector<u8>,
+    state: &mut State,
+    clock:&Clock,
+    ctx: &mut TxContext 
 ) {
-    assert!(check_validator<T>(validators), ERROR_INVALID_VALIDATOR);
-
+    let last_time = clock.timestamp_ms();
+    let off_chain_validator = create_off_chain_validator(last_time,ctx); 
+    assert!(off_chain_validation<OffChainValidator>(sig, off_chain_validator), ERROR_INVALID_VALIDATOR);
+    assert!(check_profile_exists(profile, state), ERROR_PROFILE_NOT_FOUND);
     assert!(!table::contains(&profile.tokens, token), ERROR_TOKEN_NOT_FOUND);
     
     table::add(&mut profile.tokens, token, amount);
@@ -116,70 +134,89 @@ public fun add_token<T: drop>(
     emit(ProfileUpdated { profile_id, field: string::utf8(b"token") });
 }
 
-public fun add_card<T: drop>(
+public fun add_card(
     profile: &mut Profile,
-    card: TypeName,
-    amount: u8,
-    validators: &Validators
+    card: String,
+    expire_time: u64,
+    sig: vector<u8>,
+    state: &mut State,
+    clock:&Clock,
+    ctx: &mut TxContext 
 ) {
-    assert!(check_validator<T>(validators), ERROR_INVALID_VALIDATOR);
-
+    let last_time = clock.timestamp_ms();
+    let off_chain_validator = create_off_chain_validator(last_time,ctx); 
+    assert!(off_chain_validation<OffChainValidator>(sig, off_chain_validator), ERROR_INVALID_VALIDATOR);
+    assert!(check_profile_exists(profile, state), ERROR_PROFILE_NOT_FOUND);
     assert!(!table::contains(&profile.cards, card), ERROR_CARD_NOT_FOUND);
     
-    table::add(&mut profile.cards, card, amount);
-    
+    table::add(&mut profile.cards, card, expire_time);
+    profile.last_time = last_time;
     let profile_id = profile.id.to_inner(); 
     emit(ProfileUpdated { profile_id, field: string::utf8(b"card") });
 }
 
-public fun edit_journey<T: drop>(
-    _admin: &SuperAdminCap,
+public fun edit_journey(
     profile: &mut Profile,
     journey: String,
     is_finish: bool,
-    validators: &Validators
+    sig: vector<u8>,
+    state: &mut State,
+    clock:&Clock,
+    ctx: &mut TxContext 
 ) {
-    assert!(check_validator<T>(validators), ERROR_INVALID_VALIDATOR);
-
+    let last_time = clock.timestamp_ms();
+    let off_chain_validator = create_off_chain_validator(last_time,ctx); 
+    assert!(off_chain_validation<OffChainValidator>(sig, off_chain_validator), ERROR_INVALID_VALIDATOR);
+    assert!(check_profile_exists(profile, state), ERROR_PROFILE_NOT_FOUND);
     assert!(table::contains(&profile.journey_records, journey), ERROR_JOURNEY_EXISTS);
     
     let journey_data = table::borrow_mut(&mut profile.journey_records, journey);
     *journey_data = is_finish;
-    
+    profile.last_time = last_time;
     let profile_id = profile.id.to_inner();
     emit(ProfileUpdated { profile_id, field: string::utf8(b"journey") });
 }
 
-public fun edit_token<T: drop>(
+public fun edit_token(
     profile: &mut Profile,
     token: TypeName,
     amount: u64,
-    validators: &Validators
+    sig: vector<u8>,
+    state: &mut State,
+    clock:&Clock,
+    ctx: &mut TxContext 
 ) {
-    assert!(check_validator<T>(validators), ERROR_INVALID_VALIDATOR);
-
+    let last_time = clock.timestamp_ms();
+    let off_chain_validator = create_off_chain_validator(last_time,ctx); 
+    assert!(off_chain_validation<OffChainValidator>(sig, off_chain_validator), ERROR_INVALID_VALIDATOR);
+    assert!(check_profile_exists(profile, state), ERROR_PROFILE_NOT_FOUND);
     assert!(table::contains(&profile.tokens, token), ERROR_TOKEN_NOT_FOUND);
     
     let token_data = table::borrow_mut(&mut profile.tokens, token);
     *token_data = amount;
-    
+    profile.last_time = last_time;
     let profile_id = profile.id.to_inner();
     emit(ProfileUpdated { profile_id, field: string::utf8(b"token") });
 }
 
-public fun edit_card<T: drop>(
+public fun edit_card(
     profile: &mut Profile,
-    card: TypeName,
-    amount: u8,
-    validators: &Validators
+    card: String,
+    expire_time: u64,
+    sig: vector<u8>,
+    state: &mut State,  
+    clock:&Clock,
+    ctx: &mut TxContext 
 ) {
-    assert!(check_validator<T>(validators), ERROR_INVALID_VALIDATOR);
-
+    let last_time = clock.timestamp_ms();
+    let off_chain_validator = create_off_chain_validator(last_time,ctx); 
+    assert!(off_chain_validation<OffChainValidator>(sig, off_chain_validator), ERROR_INVALID_VALIDATOR);
+    assert!(check_profile_exists(profile, state), ERROR_PROFILE_NOT_FOUND);
     assert!(table::contains(&profile.cards, card), ERROR_CARD_NOT_FOUND);
     
-    let card_data = table::borrow_mut(&mut profile.cards, card);
-    *card_data = amount;
-    
+    let card_expire_time = table::borrow_mut(&mut profile.cards, card);
+    *card_expire_time = expire_time;
+    profile.last_time = last_time;
     let profile_id = profile.id.to_inner();
     emit(ProfileUpdated { profile_id, field: string::utf8(b"card") });
 }
@@ -200,6 +237,13 @@ public fun get_profile_bouding_addr(
     assert!(profile.bouding_addr.is_some(), ERROR_BOUDING_ADDR_NOT_FOUND);
     let bouding_addr = profile.bouding_addr.borrow();
     *bouding_addr
+}
+
+public fun check_profile_exists(
+    profile: &Profile,
+    state: &State,
+): bool {
+    table::contains(&state.profiles, profile.id.to_inner())
 }
 
 
