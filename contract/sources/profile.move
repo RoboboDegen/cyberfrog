@@ -242,6 +242,10 @@ public fun get_profile_token(profile: &Profile, token: TypeName): u64 {
     *token_data
 }
 
+public fun has_card(profile: &Profile, card: String): bool {
+    table::contains(&profile.cards, card)
+}
+
 public fun get_profile_bouding_addr(profile: &Profile): address {
     assert!(profile.bouding_addr.is_some(), ERROR_BOUDING_ADDR_NOT_FOUND);
     let bouding_addr = profile.bouding_addr.borrow();

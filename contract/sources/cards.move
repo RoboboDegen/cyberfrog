@@ -1,6 +1,12 @@
 module cyberfrog::cards;
 
-use cyberfrog::version::{off_chain_validation, create_off_chain_validator, OffChainValidator};
+use cyberfrog::profile::{Self, Profile};
+use cyberfrog::version::{
+    SuperAdminCap,
+    off_chain_validation,
+    create_off_chain_validator,
+    OffChainValidator
+};
 use std::string::{Self, String};
 use sui::clock::Clock;
 use sui::event::emit;
@@ -10,9 +16,14 @@ const ERROR_CARD_NOT_FOUND: u64 = 1;
 const ERROR_CARD_ALREADY_EXISTS: u64 = 2;
 const ERROR_INVALID_VALIDATOR: u64 = 3;
 
-public struct CardCreated has copy, drop {
+public struct CardMinted has copy, drop {
     name: String,
-    card_type: u8,
+    card_type: String,
+}
+
+public struct CardRegisted has copy, drop {
+    name: String,
+    card_type: String,
 }
 
 public struct CardUpdated has copy, drop {
@@ -21,11 +32,17 @@ public struct CardUpdated has copy, drop {
 }
 
 public struct Card has drop, store {
-    card_type: u8,
+    card_type: String,
     attack: u8,
     defense: u8,
     consume: u8,
     description: String,
+}
+
+public struct CardNFT has key {
+    id: UID,
+    name: String,
+    metadata: Card,
 }
 
 public struct CardRegistry has key {
@@ -43,23 +60,18 @@ fun init(ctx: &mut TxContext) {
 }
 
 public fun register_card(
-    card_type: u8,
+    _: &SuperAdminCap,
+    card_type: String,
     attack: u8,
     defense: u8,
     consume: u8,
     name: String,
     description: String,
-    sig: vector<u8>,
     registry: &mut CardRegistry,
     clock: &Clock,
     ctx: &mut TxContext,
 ) {
     let last_time = clock.timestamp_ms();
-    let off_chain_validator = create_off_chain_validator(last_time, ctx);
-    assert!(
-        off_chain_validation<OffChainValidator>(sig, off_chain_validator),
-        ERROR_INVALID_VALIDATOR,
-    );
 
     assert!(!table::contains(&registry.cards, name), ERROR_CARD_ALREADY_EXISTS);
 
@@ -73,13 +85,14 @@ public fun register_card(
 
     table::add(&mut registry.cards, name, card);
 
-    emit(CardCreated {
+    emit(CardRegisted {
         name,
         card_type,
     });
 }
 
 public fun update_card(
+    _: &SuperAdminCap,
     name: String,
     attack: u8,
     defense: u8,
@@ -92,15 +105,11 @@ public fun update_card(
 ) {
     // 验证签名
     let last_time = clock.timestamp_ms();
-    let off_chain_validator = create_off_chain_validator(last_time, ctx);
-    assert!(
-        off_chain_validation<OffChainValidator>(sig, off_chain_validator),
-        ERROR_INVALID_VALIDATOR,
-    );
 
     assert!(table::contains(&registry.cards, name), ERROR_CARD_NOT_FOUND);
 
     let old_card = table::remove(&mut registry.cards, name);
+
     let Card {
         card_type,
         attack: _,
@@ -125,13 +134,34 @@ public fun update_card(
     });
 }
 
+public fun mint_nft(
+    name: String,
+    card_type: String,
+    card: Card,
+    profile: &mut Profile,
+    ctx: &mut TxContext,
+) {
+    assert!(profile::has_card(profile, name), ERROR_CARD_NOT_FOUND);
+    let card_nft = CardNFT {
+        id: object::new(ctx),
+        name,
+        metadata: card,
+    };
+
+    transfer::transfer(card_nft, profile.get_profile_bouding_addr());
+    emit(CardMinted {
+        name,
+        card_type,
+    });
+}
+
 //可以用来加在profile中 todo
 public fun is_valid_card(registry: &CardRegistry, card_name: String): bool {
     table::contains(&registry.cards, card_name)
 }
 
 // 获取卡片属性
-public fun get_card_details(registry: &CardRegistry, name: String): (u8, u8, u8, u8, String) {
+public fun get_card_details(registry: &CardRegistry, name: String): (String, u8, u8, u8, String) {
     assert!(table::contains(&registry.cards, name), ERROR_CARD_NOT_FOUND);
 
     let card = table::borrow(&registry.cards, name);
@@ -163,7 +193,7 @@ public fun get_card_description(registry: &CardRegistry, name: String): String {
 }
 
 // 获取卡片类型
-public fun get_card_type(registry: &CardRegistry, name: String): u8 {
+public fun get_card_type(registry: &CardRegistry, name: String): String {
     assert!(table::contains(&registry.cards, name), ERROR_CARD_NOT_FOUND);
     table::borrow(&registry.cards, name).card_type
 }
