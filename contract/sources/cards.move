@@ -68,11 +68,8 @@ public fun register_card(
     name: String,
     description: String,
     registry: &mut CardRegistry,
-    clock: &Clock,
     ctx: &mut TxContext,
 ) {
-    let last_time = clock.timestamp_ms();
-
     assert!(!table::contains(&registry.cards, name), ERROR_CARD_ALREADY_EXISTS);
 
     let card = Card {
@@ -98,13 +95,10 @@ public fun update_card(
     defense: u8,
     consume: u8,
     description: String,
-    sig: vector<u8>,
     registry: &mut CardRegistry,
-    clock: &Clock,
     ctx: &mut TxContext,
 ) {
     // 验证签名
-    let last_time = clock.timestamp_ms();
 
     assert!(table::contains(&registry.cards, name), ERROR_CARD_NOT_FOUND);
 
@@ -138,10 +132,18 @@ public fun mint_nft(
     name: String,
     card_type: String,
     card: Card,
+    sig: vector<u8>,
+    clock: &Clock,
     profile: &mut Profile,
     ctx: &mut TxContext,
 ) {
+    let last_time = clock.timestamp_ms();
+    let off_chain_validator = create_off_chain_validator(last_time, ctx);
     assert!(profile::has_card(profile, name), ERROR_CARD_NOT_FOUND);
+    assert!(
+        off_chain_validation<OffChainValidator>(sig, off_chain_validator),
+        ERROR_INVALID_VALIDATOR,
+    );
     let card_nft = CardNFT {
         id: object::new(ctx),
         name,
