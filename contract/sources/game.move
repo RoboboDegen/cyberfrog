@@ -142,7 +142,6 @@ public fun mint_journey_nft(
     assert!(!table::contains(&game_state.minted_journeys, journey_id), ERROR_JOURNEY_EXISTS);
     //todo 需要一个确定profile中是否含有该journey的函数
 
-    // 获取旅程数据
     let journey_data = table::borrow(&game_state.journey_records, journey_id);
 
     let journey_nft = JourneyNFT {
@@ -152,14 +151,12 @@ public fun mint_journey_nft(
 
     table::add(&mut game_state.minted_journeys, journey_id, true);
 
-    // 发送NFT到用户
     if (profile::has_bounding_address(profile)) {
         transfer::transfer(journey_nft, profile::get_profile_bouding_addr(profile));
     } else {
         transfer::transfer(journey_nft, tx_context::sender(ctx));
     };
 
-    // 发送铸造事件
     emit(JourneyMinted {
         journey_id,
         player: journey_data.player,
