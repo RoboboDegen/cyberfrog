@@ -121,7 +121,6 @@ public fun record_journey(
     });
 }
 
-// 铸造旅程NFT
 public fun mint_journey_nft(
     journey_id: ID,
     sig: vector<u8>,
