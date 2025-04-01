@@ -246,6 +246,10 @@ public fun has_card(profile: &Profile, card: String): bool {
     table::contains(&profile.cards, card)
 }
 
+public fun has_bounding_address(profile: &Profile): bool {
+    profile.bouding_addr.is_some()
+}
+
 public fun get_profile_bouding_addr(profile: &Profile): address {
     assert!(profile.bouding_addr.is_some(), ERROR_BOUDING_ADDR_NOT_FOUND);
     let bouding_addr = profile.bouding_addr.borrow();
