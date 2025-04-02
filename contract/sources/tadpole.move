@@ -1,18 +1,15 @@
 module cyberfrog::tadpole;
 
-use sui::{
-    coin::{Self, TreasuryCap},
-    token::{Self, TokenPolicy, Token},
-    event::emit,
-    url::new_unsafe_from_bytes
-};
-
+use sui::coin::{Self, TreasuryCap};
+use sui::event::emit;
+use sui::token::{Self, TokenPolicy, Token};
+use sui::url::new_unsafe_from_bytes;
 
 const DECIMALS: u8 = 0;
 const SYMBOLS: vector<u8> = b"TAD";
 const NAME: vector<u8> = b"Tadpole";
 const DESCRIPTION: vector<u8> = b"Tadpole Token";
-const ICON_URL: vector<u8> = b"https://";  // Coin / Token Icon
+const ICON_URL: vector<u8> = b"https://"; // Coin / Token Icon
 
 // ------ Errors -----------
 const EWrongAmount: u64 = 0;
@@ -43,15 +40,16 @@ fun init(otw: TADPOLE, ctx: &mut TxContext) {
     let (treasury_cap, metadata) = coin::create_currency<TADPOLE>(
         otw,
         DECIMALS,
-        SYMBOLS, 
-        NAME, 
-        DESCRIPTION, 
-        option::some(new_unsafe_from_bytes(ICON_URL)), 
-        ctx
+        SYMBOLS,
+        NAME,
+        DESCRIPTION,
+        option::some(new_unsafe_from_bytes(ICON_URL)),
+        ctx,
     );
 
     let (mut policy, cap) = token::new_policy<TADPOLE>(
-        &treasury_cap, ctx
+        &treasury_cap,
+        ctx,
     );
 
     let token_cap = TADTokenCap {
@@ -71,14 +69,14 @@ public fun send_tad(
     tad_token_cap: &mut TADTokenCap,
     amount: u64,
     recipient: address,
-    ctx: &mut TxContext
+    ctx: &mut TxContext,
 ) {
     let tad_token = token::mint(&mut tad_token_cap.cap, amount, ctx);
     let req = token::transfer<TADPOLE>(tad_token, recipient, ctx);
     token::confirm_with_treasury_cap<TADPOLE>(
         &mut tad_token_cap.cap,
         req,
-        ctx
+        ctx,
     );
 }
 
@@ -86,7 +84,7 @@ public(package) fun purchase(
     payment: Token<TADPOLE>,
     price: u64,
     token_prolicy: &mut TokenPolicy<TADPOLE>,
-    ctx: &mut TxContext
+    ctx: &mut TxContext,
 ) {
     assert!(token::value<TADPOLE>(&payment) == price, EWrongAmount);
     let req = token::spend(payment, ctx);
@@ -98,7 +96,7 @@ public(package) fun purchase(
 }
 
 // ------ Admin Functions ---------
-// for token::flush 
+// for token::flush
 public fun treasury_borrow_mut(
     _admin: &AdminCap,
     tad_token_cap: &mut TADTokenCap,
